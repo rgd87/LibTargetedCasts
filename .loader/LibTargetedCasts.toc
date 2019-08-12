@@ -1,9 +1,9 @@
-## Interface: 80000
-## Title: LibSpellLock
+## Interface: 80200
+## Title: LibTargetedCasts
 ## Version: @project-version@
 ## Author: d87
 
 LibStub\LibStub.lua
 CallbackHandler-1.0\CallbackHandler-1.0.lua
 
-LibSpellLocks.lua
+LibTargetedCasts.lua
