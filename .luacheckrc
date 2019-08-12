@@ -100,4 +100,5 @@ globals = {
 	"UnitPlayerOrPetInRaid",
 	"UnitIsUnit",
 	"UnitExists",
+	"UnitIsFriend",
 }

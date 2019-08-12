@@ -30,6 +30,7 @@ local UnitIsUnit = UnitIsUnit
 local UnitExists = UnitExists
 local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
+local UnitIsFriend = UnitIsFriend
 
 f:SetScript("OnEvent", function(self, event, ...)
     return self[event](self, event, ...)
