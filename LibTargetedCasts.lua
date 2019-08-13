@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 1
+local MAJOR, MINOR = "LibTargetedCasts", 2
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
@@ -13,14 +13,14 @@ lib.callbacks = lib.callbacks or LibStub("CallbackHandler-1.0"):New(lib)
 
 lib.frame = lib.frame or CreateFrame("Frame")
 
-lib.data = lib.data or {}
-
 local f = lib.frame
 local callbacks = lib.callbacks
-local data = lib.data
 
-local castsToRemove = {}
--- local CombatLogGetCurrentEventInfo = CombatLogGetCurrentEventInfo
+lib.casters = lib.casters or {} -- setmetatable({}, { __mode = "v" })
+local casters = lib.casters
+
+local guidsToPurge = {}
+
 local UnitGUID = UnitGUID
 local GetTime = GetTime
 local tinsert = tinsert
@@ -47,47 +47,36 @@ local IsGroupUnit = function(unit)
     return UnitExists(unit) and (UnitIsUnit(unit, "player") or UnitPlayerOrPetInParty(unit) or UnitPlayerOrPetInRaid(unit))
 end
 
-local previousEvent
-local previousUnit = "player"
-local previousTime = 0
+-- local eventCounter = 0
+
 function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID)
     if not UnitIsFriend("player", srcUnit) then
-        local now = GetTime()
-        if previousEvent == event and previousTime == now and UnitIsUnit(previousUnit, srcUnit) then return end
-        previousEvent = event
-        previousUnit = srcUnit
-        previousTime = now
-
         local dstUnit = srcUnit.."target"
-        -- print(spellID, GetSpellInfo(spellID))
         if IsGroupUnit(dstUnit) then
             local srcGUID = UnitGUID(srcUnit)
             local dstGUID = UnitGUID(dstUnit)
 
-            local casts = data[dstGUID]
-            if not casts then
-                data[dstGUID] = {}
-                casts = data[dstGUID]
-            end
+            local currentCast = casters[srcGUID]
 
             local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID
             if castType == "CAST" then
                 name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
             else
-                name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID = UnitChannelInfo(srcUnit)
-                if name then
-                    castID = srcGUID..spellID
-                end
+                name, text, texture, startTimeMS, endTimeMS, isTradeSkill,         notInterruptible, spellID = UnitChannelInfo(srcUnit)
             end
-            if not castID then return end
+            if not name then return end
 
-            if casts[castID] then
-                refreshCastTable(casts[castID], srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID)
+            if currentCast then
+                refreshCastTable(currentCast, srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID)
             else
-                casts[castID] = { srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID }
+                casters[srcGUID] = { srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID }
             end
-            -- callbacks:Fire("SPELLCAST_START", dstUnit, dstGUID, srcUnit, castID, spellID)
             callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
+
+            -- eventCounter = eventCounter + 1
+            -- if eventCounter > 200 then
+
+            -- end
         end
     end
 end
@@ -107,30 +96,12 @@ f.UNIT_SPELLCAST_CHANNEL_UPDATE = f.UNIT_SPELLCAST_CHANNEL_START
 
 function f:UNIT_SPELLCAST_COMMON_STOP(event, castType, srcUnit, castID, spellID)
     if not UnitIsFriend("player", srcUnit) then
-        local now = GetTime()
-        if previousEvent == event and previousTime == now and UnitIsUnit(previousUnit, srcUnit) then return end
-        previousEvent = event
-        previousUnit = srcUnit
-        previousTime = now
-
-        -- if castID == previousCastID then return end
-        -- previousCastID = castID -- remove duplicates
-
-        -- UnitPlayerOrPetInParty("unit") - Returns 1 if the specified unit/pet is a member of the player's party, nil otherwise (returns nil for "player" and "pet")
-        -- UnitPlayerOrPetInRaid("unit") - Returns 1 if the specified unit/pet is a member of the player's raid, nil otherwise (returns nil for "player" and "pet")
-        -- if UnitExists(dstUnit) and UnitIsPlayer(dstUnit) then
-        if castType == "CHANNEL" and not castID then
-            local srcGUID = UnitGUID(srcUnit)
-            castID = srcGUID..spellID
-        end
-
-        for dstGUID, casts in pairs(data) do
-            if casts[castID] then
-                -- callbacks:Fire("SPELLCAST_STOP", dstUnit, dstGUID, srcUnit, castID, spellID)
-                casts[castID] = nil
-                callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
-                return
-            end
+        local srcGUID = UnitGUID(srcUnit)
+        local currentCast = casters[srcGUID]
+        if currentCast then
+            local dstGUID = currentCast[2]
+            casters[srcGUID] = nil
+            callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
         end
     end
 end
@@ -150,34 +121,18 @@ end
 
 function f:UNIT_TARGET(event, srcUnit)
     if not UnitIsFriend("player", srcUnit) then
-        local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
-        if not castID then
-            name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID = UnitChannelInfo(srcUnit)
-            if name then
-                local srcGUID = UnitGUID(srcUnit)
-                castID = srcGUID..spellID
-            end
-        end
-        if castID then
-            local srcGUID, dstGUID_old = lib:FindIncomingCastByID(castID)
-            if dstGUID_old then
-                local dstUnit = srcUnit.."target"
-                local dstGUID_new = UnitGUID(dstUnit)
+        local srcGUID = UnitGUID(srcUnit)
+        local currentCast = casters[srcGUID]
+        if currentCast then
+            local _, dstGUID_old, name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = unpack(currentCast)
 
-                if dstGUID_old ~= dstGUID_new then
-                    local castInfo = data[dstGUID_old][castID]
-                    data[dstGUID_old][castID] = nil
-                    callbacks:Fire("SPELLCAST_UPDATE", dstGUID_old)
-
-                    if IsGroupUnit(dstUnit) then
-                        local casts = data[dstGUID_new]
-                        if not casts then
-                            data[dstGUID_new] = {}
-                            casts = data[dstGUID_new]
-                        end
-                        casts[castID] = castInfo
-                        callbacks:Fire("SPELLCAST_UPDATE", dstGUID_new)
-                    end
+            local dstUnit = srcUnit.."target"
+            local dstGUID_new = UnitGUID(dstUnit)
+            if dstGUID_old ~= dstGUID_new then
+                currentCast[2] = dstGUID_new
+                callbacks:Fire("SPELLCAST_UPDATE", dstGUID_old)
+                if IsGroupUnit(dstUnit) then
+                    callbacks:Fire("SPELLCAST_UPDATE", dstGUID_new)
                 end
             end
         end
@@ -187,7 +142,7 @@ end
 
 function f:NAME_PLATE_UNIT_ADDED(event, srcUnit)
     local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
-    if castID then
+    if spellID then
         return self:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", srcUnit, castID, spellID)
     else
         name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID = UnitChannelInfo(srcUnit)
@@ -212,64 +167,53 @@ local normalUnits = {
     ["arena5"] = true,
 }
 
-
 function f:NAME_PLATE_UNIT_REMOVED(event, srcUnit)
     for unit in pairs(normalUnits) do
         if UnitIsUnit(unit, srcUnit) then
             return
         end
     end
-
     local srcGUID = UnitGUID(srcUnit)
-
-    for dstGUID, casts in pairs(data) do
-        for castID, castInfo in pairs(casts) do
-            if castInfo[1] == srcGUID then
-                -- local dstUnit = srcUnit.."target"
-                -- local srcGUID, dstGUID, name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = unpack(castInfo)
-                -- callbacks:Fire("SPELLCAST_STOP", dstUnit, dstGUID, srcUnit, castID, spellID)
-                tinsert(castsToRemove, castID)
-            end
-        end
+    local currentCast = casters[srcGUID]
+    if currentCast then
+        local dstGUID = currentCast[2]
+        casters[srcGUID] = nil
+        callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
     end
-    self:CleanupCasts()
 end
 
-local function PeriodicCleanup()
-    local now = GetTime()
-    for dstGUID, casts in pairs(data) do
-        for castID, castInfo in pairs(casts) do
-            local endTime = castInfo[8]
-            if now > endTime then
-                -- local srcGUID, dstGUID, name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = unpack(castInfo)
-                -- callbacks:Fire("SPELLCAST_STOP", nil, dstGUID, nil, castID, spellID)
-                tinsert(castsToRemove, castID)
-            end
-        end
+function PurgeExpired()
+    for i, guid in ipairs(guidsToPurge) do
+        casters[guid] = nil
     end
-    f:CleanupCasts()
+    table.wipe(guidsToPurge)
 end
 
-function f:CleanupCasts()
-    for dstGUID, casts in pairs(data) do
-        local removed
-        for i, castID in ipairs(castsToRemove) do
-            if casts[castID] then
-                -- callbacks:Fire("SPELLCAST_STOP", dstUnit, dstGUID, srcUnit, castID, spellID)
-                casts[castID] = nil
-                removed = true
-            end
-        end
-        if removed then
-            callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
-        end
-    end
-    table.wipe(castsToRemove)
-end
-
+local returnArray = {}
 function lib:GetUnitIncomingCastsTable(unit)
-    local unitGUID = UnitGUID(unit)
-    return data[unitGUID]
+    table.wipe(returnArray)
+    local dstGUID = UnitGUID(unit)
+    local now = GetTime()
+    for srcGUID, castInfo in pairs(casters) do
+        if castInfo[2] == dstGUID then
+            local endTime = castInfo[8]
+            local isExpired = endTime < now
+            if isExpired then
+                tinsert(guidsToPurge, srcGUID)
+            else
+                tinsert(returnArray, castInfo)
+            end
+        end
+    end
+    PurgeExpired()
+    return returnArray
+end
+
+function lib:GetCastInfoBySourceGUID(srcGUID)
+    local cast = casters[srcGUID]
+    if cast then
+        return unpack(cast)
+    end
 end
 
 -- function lib:GetUnitIncomingCasts(...)
@@ -282,25 +226,6 @@ end
 --     return returnArray
 -- end
 
-function lib:GetUnitIncomingCastByID(dstGUID, castID)
-    local casts = data[dstGUID]
-    if casts then
-        local castInfo = casts[castID]
-        if castInfo then
-            return unpack(castInfo)
-        end
-    end
-end
-
-function lib:FindIncomingCastByID(castID)
-    for dstGUID, casts in pairs(data) do
-        if casts[castID] then
-            return unpack(casts[castID])
-        end
-    end
-end
-
-local cleanupTimer
 function callbacks.OnUsed()
     -- f:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     f:RegisterEvent("UNIT_SPELLCAST_START")
@@ -317,16 +242,10 @@ function callbacks.OnUsed()
 
     f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     f:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
-    if not cleanupTimer then
-        cleanupTimer = C_Timer.NewTicker(10, PeriodicCleanup)
-    end
 end
 
 function callbacks.OnUnused()
     f:UnregisterAllEvents()
-    if cleanupTimer then
-        cleanupTimer:Cancel()
-    end
 end
 
 
