@@ -32,6 +32,16 @@ local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
 local UnitIsFriend = UnitIsFriend
 
+local nameplateGUIDtoUnit = {}
+local raidGUIDtoUnit = {}
+local partyGUIDtoUnit = {}
+local commonUnits = {
+    "player",
+    "target",
+    "targettarget",
+    "pet",
+}
+
 f:SetScript("OnEvent", function(self, event, ...)
     return self[event](self, event, ...)
 end)
@@ -141,6 +151,10 @@ end
 
 
 function f:NAME_PLATE_UNIT_ADDED(event, srcUnit)
+    -- Unit Lookup
+    local unitGUID = UnitGUID(srcUnit)
+    nameplateGUIDtoUnit[unitGUID] = srcUnit
+
     local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
     if spellID then
         return self:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", srcUnit, castID, spellID)
@@ -168,6 +182,10 @@ local normalUnits = {
 }
 
 function f:NAME_PLATE_UNIT_REMOVED(event, srcUnit)
+    -- Unit Lookup
+    local unitGUID = UnitGUID(srcUnit)
+    nameplateGUIDtoUnit[unitGUID] = nil
+
     for unit in pairs(normalUnits) do
         if UnitIsUnit(unit, srcUnit) then
             return
@@ -182,7 +200,7 @@ function f:NAME_PLATE_UNIT_REMOVED(event, srcUnit)
     end
 end
 
-function PurgeExpired()
+local function PurgeExpired()
     for i, guid in ipairs(guidsToPurge) do
         casters[guid] = nil
     end
@@ -242,6 +260,7 @@ function callbacks.OnUsed()
 
     f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     f:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    f:RegisterEvent("GROUP_ROSTER_UPDATE")
 end
 
 function callbacks.OnUnused()
@@ -249,3 +268,25 @@ function callbacks.OnUnused()
 end
 
 
+function f:GROUP_ROSTER_UPDATE()
+    table.wipe(partyGUIDtoUnit)
+    table.wipe(raidGUIDtoUnit)
+    if IsInGroup() then
+        for i=1,4 do
+            local unit = "party"..i
+            local guid = UnitGUID(unit)
+            if guid then
+                partyGUIDtoUnit[guid] = unit
+            end
+        end
+    end
+    if IsInRaid() then
+        for i=1,40 do
+            local unit = "raid"..i
+            local guid = UnitGUID(unit)
+            if guid then
+                raidGUIDtoUnit[guid] = unit
+            end
+        end
+    end
+end
