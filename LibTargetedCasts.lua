@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 2
+local MAJOR, MINOR = "LibTargetedCasts", 3
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
@@ -47,6 +47,12 @@ local IsGroupUnit = function(unit)
     return UnitExists(unit) and (UnitIsUnit(unit, "player") or UnitPlayerOrPetInParty(unit) or UnitPlayerOrPetInRaid(unit))
 end
 
+
+local function FireCallback(event, guid, ...)
+    -- TODO: Add unit lookup
+    callbacks:Fire(event, guid, ...)
+end
+
 -- local eventCounter = 0
 
 function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID)
@@ -71,7 +77,7 @@ function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID
             else
                 casters[srcGUID] = { srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID }
             end
-            callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
+            FireCallback("SPELLCAST_UPDATE", dstGUID)
 
             -- eventCounter = eventCounter + 1
             -- if eventCounter > 200 then
@@ -101,7 +107,7 @@ function f:UNIT_SPELLCAST_COMMON_STOP(event, castType, srcUnit, castID, spellID)
         if currentCast then
             local dstGUID = currentCast[2]
             casters[srcGUID] = nil
-            callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
+            FireCallback("SPELLCAST_UPDATE", dstGUID)
         end
     end
 end
@@ -130,9 +136,9 @@ function f:UNIT_TARGET(event, srcUnit)
             local dstGUID_new = UnitGUID(dstUnit)
             if dstGUID_old ~= dstGUID_new then
                 currentCast[2] = dstGUID_new
-                callbacks:Fire("SPELLCAST_UPDATE", dstGUID_old)
+                FireCallback("SPELLCAST_UPDATE", dstGUID_old)
                 if IsGroupUnit(dstUnit) then
-                    callbacks:Fire("SPELLCAST_UPDATE", dstGUID_new)
+                    FireCallback("SPELLCAST_UPDATE", dstGUID_new)
                 end
             end
         end
@@ -178,11 +184,11 @@ function f:NAME_PLATE_UNIT_REMOVED(event, srcUnit)
     if currentCast then
         local dstGUID = currentCast[2]
         casters[srcGUID] = nil
-        callbacks:Fire("SPELLCAST_UPDATE", dstGUID)
+        FireCallback("SPELLCAST_UPDATE", dstGUID)
     end
 end
 
-function PurgeExpired()
+local function PurgeExpired()
     for i, guid in ipairs(guidsToPurge) do
         casters[guid] = nil
     end
