@@ -31,6 +31,21 @@ local UnitExists = UnitExists
 local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
 
+local isBCC = WOW_PROJECT_ID == WOW_PROJECT_BURNING_CRUSADE_CLASSIC
+if isBCC then
+    UnitCastingInfo = function(...)
+        local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, spellID = _G.UnitCastingInfo(...)
+        local notInterruptible = false
+        return name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID
+    end
+
+    UnitChannelInfo = function(...)
+        local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, spellID = _G.UnitChannelInfo(...)
+        local notInterruptible = false
+        return name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID
+    end
+end
+
 f:SetScript("OnEvent", function(self, event, ...)
     return self[event](self, event, ...)
 end)
