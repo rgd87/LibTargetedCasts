@@ -141,6 +141,14 @@ function f:UNIT_TARGET(event, srcUnit)
                     FireCallback("SPELLCAST_UPDATE", dstGUID_new)
                 end
             end
+        else -- if unit switched target (from not having any) and it's already casting something that isn't tracked
+            if UnitCastingInfo(srcUnit) then
+                self:UNIT_SPELLCAST_START(event, srcUnit)
+            end
+
+            if UnitChannelInfo(srcUnit) then
+                self:UNIT_SPELLCAST_CHANNEL_START(event, srcUnit)
+            end
         end
     end
 end
