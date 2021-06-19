@@ -30,7 +30,6 @@ local UnitIsUnit = UnitIsUnit
 local UnitExists = UnitExists
 local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
-local UnitIsFriend = UnitIsFriend
 
 f:SetScript("OnEvent", function(self, event, ...)
     return self[event](self, event, ...)
@@ -47,6 +46,11 @@ local IsGroupUnit = function(unit)
     return UnitExists(unit) and (UnitIsUnit(unit, "player") or UnitPlayerOrPetInParty(unit) or UnitPlayerOrPetInRaid(unit))
 end
 
+local function UnitIsHostile(unit)
+    local reaction = UnitReaction(unit, 'player') or 1
+    return reaction <= 4
+end
+
 
 local function FireCallback(event, guid, ...)
     -- TODO: Add unit lookup
@@ -56,7 +60,7 @@ end
 -- local eventCounter = 0
 
 function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID)
-    if not UnitIsFriend("player", srcUnit) then
+    if UnitIsHostile(srcUnit) then
         local dstUnit = srcUnit.."target"
         if IsGroupUnit(dstUnit) then
             local srcGUID = UnitGUID(srcUnit)
@@ -101,7 +105,7 @@ f.UNIT_SPELLCAST_CHANNEL_UPDATE = f.UNIT_SPELLCAST_CHANNEL_START
 
 
 function f:UNIT_SPELLCAST_COMMON_STOP(event, castType, srcUnit, castID, spellID)
-    if not UnitIsFriend("player", srcUnit) then
+    if UnitIsHostile(srcUnit) then
         local srcGUID = UnitGUID(srcUnit)
         local currentCast = casters[srcGUID]
         if currentCast then
@@ -126,7 +130,7 @@ function f:UNIT_SPELLCAST_CHANNEL_STOP(event, ...)
 end
 
 function f:UNIT_TARGET(event, srcUnit)
-    if not UnitIsFriend("player", srcUnit) then
+    if UnitIsHostile(srcUnit) then
         local srcGUID = UnitGUID(srcUnit)
         local currentCast = casters[srcGUID]
         if currentCast then
