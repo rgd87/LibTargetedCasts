@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 3
+local MAJOR, MINOR = "LibTargetedCasts", 4
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
