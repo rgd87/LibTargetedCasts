@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 4
+local MAJOR, MINOR = "LibTargetedCasts", 5
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
@@ -31,6 +31,21 @@ local UnitExists = UnitExists
 local UnitCastingInfo = UnitCastingInfo
 local UnitChannelInfo = UnitChannelInfo
 
+
+local apiLevel = math.floor(select(4,GetBuildInfo())/10000)
+if apiLevel <= 2 then
+    UnitCastingInfo = function(...)
+        local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, spellID = _G.UnitCastingInfo(...)
+        local notInterruptible = false
+        return name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID
+    end
+
+    UnitChannelInfo = function(...)
+        local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, spellID = _G.UnitChannelInfo(...)
+        local notInterruptible = false
+        return name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID
+    end
+end
 
 f:SetScript("OnEvent", function(self, event, ...)
     return self[event](self, event, ...)
