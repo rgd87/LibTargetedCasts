@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 5
+local MAJOR, MINOR = "LibTargetedCasts", 6
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
@@ -58,8 +58,10 @@ local refreshCastTable = function(tbl, ...)
     end
 end
 
-local IsGroupUnit = function(unit)
-    return UnitExists(unit) and (UnitIsUnit(unit, "player") or UnitPlayerOrPetInParty(unit) or UnitPlayerOrPetInRaid(unit))
+local IsGroupUnit = function(unit, srcUnit)
+    if not IsInInstance() then
+        return UnitExists(unit) and (UnitIsUnit(unit, "player") or UnitPlayerOrPetInParty(unit) or UnitPlayerOrPetInRaid(unit))
+    end
 end
 
 local function UnitIsHostile(unit)
@@ -78,31 +80,33 @@ end
 function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID)
     if UnitIsHostile(srcUnit) then
         local dstUnit = srcUnit.."target"
-        if IsGroupUnit(dstUnit) then
-            local srcGUID = UnitGUID(srcUnit)
+        if IsGroupUnit(dstUnit, srcUnit) then
             local dstGUID = UnitGUID(dstUnit)
+            if issecretvalue(dstGUID) then return end
 
-            local currentCast = casters[srcGUID]
+            local currentCast = casters[srcUnit]
 
-            local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID
+            local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID, castBarID, delayTimeMs
+            local duration
             if castType == "CAST" then
-                name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
+                name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID, castBarID, delayTimeMs  = UnitCastingInfo(srcUnit)
+                duration = UnitCastingDuration(srcUnit)
             else
-                name, text, texture, startTimeMS, endTimeMS, isTradeSkill,         notInterruptible, spellID = UnitChannelInfo(srcUnit)
+                name, text, texture, startTimeMS, endTimeMS, isTradeSkill,         notInterruptible, spellID, isEmpowered = UnitChannelInfo(srcUnit)
+                if(isEmpowered) then
+                    duration = UnitEmpoweredChannelDuration(srcUnit)
+                else
+                    duration = UnitChannelDuration(srcUnit)
+                end
             end
             if not name then return end
 
             if currentCast then
-                refreshCastTable(currentCast, srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID)
+                refreshCastTable(currentCast, srcUnit, dstGUID, castType, name, text, texture, startTimeMS, duration, isTradeSkill, castID, notInterruptible, spellID)
             else
-                casters[srcGUID] = { srcGUID, dstGUID, castType, name, text, texture, startTimeMS/1000, endTimeMS/1000, isTradeSkill, castID, notInterruptible, spellID }
+                casters[srcUnit] = { srcUnit, dstGUID, castType, name, text, texture, startTimeMS, duration, isTradeSkill, castID, notInterruptible, spellID }
             end
             FireCallback("SPELLCAST_UPDATE", dstGUID)
-
-            -- eventCounter = eventCounter + 1
-            -- if eventCounter > 200 then
-
-            -- end
         end
     end
 end
@@ -122,11 +126,10 @@ f.UNIT_SPELLCAST_CHANNEL_UPDATE = f.UNIT_SPELLCAST_CHANNEL_START
 
 function f:UNIT_SPELLCAST_COMMON_STOP(event, castType, srcUnit, castID, spellID)
     if UnitIsHostile(srcUnit) then
-        local srcGUID = UnitGUID(srcUnit)
-        local currentCast = casters[srcGUID]
+        local currentCast = casters[srcUnit]
         if currentCast then
             local dstGUID = currentCast[2]
-            casters[srcGUID] = nil
+            casters[srcUnit] = nil
             FireCallback("SPELLCAST_UPDATE", dstGUID)
         end
     end
@@ -147,13 +150,16 @@ end
 
 function f:UNIT_TARGET(event, srcUnit)
     if UnitIsHostile(srcUnit) then
-        local srcGUID = UnitGUID(srcUnit)
-        local currentCast = casters[srcGUID]
+        local currentCast = casters[srcUnit]
         if currentCast then
             local _, dstGUID_old, name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = unpack(currentCast)
 
             local dstUnit = srcUnit.."target"
             local dstGUID_new = UnitGUID(dstUnit)
+            if issecretvalue(dstGUID_new) then
+                casters[srcUnit] = nil
+                FireCallback("SPELLCAST_UPDATE", dstGUID_old)
+            end
             if dstGUID_old ~= dstGUID_new then
                 currentCast[2] = dstGUID_new
                 FireCallback("SPELLCAST_UPDATE", dstGUID_old)
@@ -201,17 +207,20 @@ local normalUnits = {
     ["arena5"] = true,
 }
 
+function f:PLAYER_ENTERING_WORLD()
+    table.wipe(casters)
+end
+
 function f:NAME_PLATE_UNIT_REMOVED(event, srcUnit)
-    for unit in pairs(normalUnits) do
-        if UnitIsUnit(unit, srcUnit) then
-            return
-        end
-    end
-    local srcGUID = UnitGUID(srcUnit)
-    local currentCast = casters[srcGUID]
+    -- for unit in pairs(normalUnits) do
+    --     if UnitIsUnit(unit, srcUnit) then
+    --         return
+    --     end
+    -- end
+    local currentCast = casters[srcUnit]
     if currentCast then
         local dstGUID = currentCast[2]
-        casters[srcGUID] = nil
+        casters[srcUnit] = nil
         FireCallback("SPELLCAST_UPDATE", dstGUID)
     end
 end
@@ -224,31 +233,20 @@ local function PurgeExpired()
 end
 
 local returnArray = {}
-function lib:GetUnitIncomingCastsTable(unit)
+function lib:GetUnitIncomingCast(unit)
     table.wipe(returnArray)
     local dstGUID = UnitGUID(unit)
-    local now = GetTime()
-    for srcGUID, castInfo in pairs(casters) do
+    if issecretvalue(dstGUID) then return nil end
+
+    for srcUnit, castInfo in pairs(casters) do
         if castInfo[2] == dstGUID then
-            local endTime = castInfo[8]
-            local isExpired = endTime < now
-            if isExpired then
-                tinsert(guidsToPurge, srcGUID)
-            else
-                tinsert(returnArray, castInfo)
-            end
+            return unpack(castInfo)
+            -- tinsert(returnArray, castInfo)
         end
     end
-    PurgeExpired()
-    return returnArray
+    return nil
 end
 
-function lib:GetCastInfoBySourceGUID(srcGUID)
-    local cast = casters[srcGUID]
-    if cast then
-        return unpack(cast)
-    end
-end
 
 -- function lib:GetUnitIncomingCasts(...)
 --     self:GetUnitIncomingCastsInternal(...)
@@ -276,6 +274,8 @@ function callbacks.OnUsed()
 
     f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     f:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
 end
 
 function callbacks.OnUnused()
