@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 6
+local MAJOR, MINOR = "LibTargetedCasts", 7
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
@@ -182,12 +182,12 @@ end
 
 function f:NAME_PLATE_UNIT_ADDED(event, srcUnit)
     local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
-    if spellID then
-        return self:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", srcUnit, castID, spellID)
+    if name then
+        return self:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", srcUnit)
     else
         name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID = UnitChannelInfo(srcUnit)
         if spellID then
-            return self:UNIT_SPELLCAST_CHANNEL_START("UNIT_SPELLCAST_CHANNEL_START", srcUnit, nil, spellID)
+            return self:UNIT_SPELLCAST_CHANNEL_START("UNIT_SPELLCAST_CHANNEL_START", srcUnit)
         end
     end
 end
