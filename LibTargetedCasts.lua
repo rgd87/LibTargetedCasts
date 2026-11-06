@@ -4,7 +4,7 @@ Author: d87
 --]================]
 
 
-local MAJOR, MINOR = "LibTargetedCasts", 7
+local MAJOR, MINOR = "LibTargetedCasts", 8
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then return end
 
@@ -87,12 +87,13 @@ function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID
             local currentCast = casters[srcUnit]
 
             local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID, castBarID, delayTimeMs
+            local isEmpowered, numEmpowerStages
             local duration
             if castType == "CAST" then
                 name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID, castBarID, delayTimeMs  = UnitCastingInfo(srcUnit)
                 duration = UnitCastingDuration(srcUnit)
             else
-                name, text, texture, startTimeMS, endTimeMS, isTradeSkill,         notInterruptible, spellID, isEmpowered = UnitChannelInfo(srcUnit)
+                name, text, texture, startTimeMS, endTimeMS, isTradeSkill,         notInterruptible, spellID, isEmpowered, numEmpowerStages, castBarID = UnitChannelInfo(srcUnit)
                 if(isEmpowered) then
                     duration = UnitEmpoweredChannelDuration(srcUnit)
                 else
@@ -104,7 +105,7 @@ function f:UNIT_SPELLCAST_COMMON_START(event, castType, srcUnit, castID, spellID
             if currentCast then
                 refreshCastTable(currentCast, srcUnit, dstGUID, castType, name, text, texture, startTimeMS, duration, isTradeSkill, castID, notInterruptible, spellID)
             else
-                casters[srcUnit] = { srcUnit, dstGUID, castType, name, text, texture, startTimeMS, duration, isTradeSkill, castID, notInterruptible, spellID }
+                casters[srcUnit] = { srcUnit, dstGUID, castType, name, text, texture, startTimeMS, duration, isTradeSkill, castID, notInterruptible, spellID, castBarID }
             end
             FireCallback("SPELLCAST_UPDATE", dstGUID)
         end
@@ -181,12 +182,13 @@ end
 
 
 function f:NAME_PLATE_UNIT_ADDED(event, srcUnit)
-    local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID = UnitCastingInfo(srcUnit)
-    if name then
+    local name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID, castBarID, delayTimeMs = UnitCastingInfo(srcUnit)
+    local isEmpowered, numEmpowerStages
+    if castBarID then
         return self:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", srcUnit)
     else
-        name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID = UnitChannelInfo(srcUnit)
-        if spellID then
+        name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID, spellID, isEmpowered, numEmpowerStages, castBarID = UnitChannelInfo(srcUnit)
+        if castBarID then
             return self:UNIT_SPELLCAST_CHANNEL_START("UNIT_SPELLCAST_CHANNEL_START", srcUnit)
         end
     end
